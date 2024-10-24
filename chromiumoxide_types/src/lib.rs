@@ -198,6 +198,24 @@ pub struct Response {
     pub error: Option<Error>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+#[serde(untagged)]
+pub enum UntaggedMessage<T = CdpJsonEventMessage> {
+    /// A response for a request
+    Response(Response),
+    /// An emitted event from the server
+    Event(T),
+}
+
+impl<T> From<Message<T>> for UntaggedMessage<T> {
+    fn from(msg: Message<T>) -> Self {
+        match msg {
+            Message::Response(response) => UntaggedMessage::Response(response),
+            Message::Event(event) => UntaggedMessage::Event(event),
+        }
+    }
+}
+
 /// An incoming message read from the web socket can either be a response to a
 /// previously submitted `Request`, identified by an identifier `id`, or an
 /// `Event` emitted by the server.
@@ -237,6 +255,9 @@ where
     type Err = serde_json::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Err(e) = serde_json::from_str::<UntaggedMessage<T>>(s) {
+            tracing::error!(error = ?e, json = %s, "Failed to deserialize message with serde untagged");
+        }
         if let Ok(response) = serde_json::from_str::<Response>(s) {
             Ok(Message::Response(response))
         } else {
