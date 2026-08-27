@@ -7,6 +7,7 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use crate::cmd::{CommandMessage, to_command_response};
 use crate::error::Result;
@@ -35,10 +36,14 @@ pin_project! {
 }
 
 impl<T: Command> CommandFuture<T> {
+    /// Creates a new `CommandFuture` that fails with
+    /// [`CdpError::Timeout`](crate::error::CdpError::Timeout) if no response
+    /// arrives within `timeout`.
     pub fn new(
         cmd: T,
         target_sender: mpsc::Sender<TargetMessage>,
         session: Option<SessionId>,
+        timeout: Duration,
     ) -> Result<Self> {
         let (tx, rx_command) = oneshot_channel::<Result<Response>>();
         let method = cmd.identifier();
@@ -47,9 +52,7 @@ impl<T: Command> CommandFuture<T> {
             cmd, tx, session,
         )?));
 
-        let delay = futures_timer::Delay::new(std::time::Duration::from_millis(
-            crate::handler::REQUEST_TIMEOUT,
-        ));
+        let delay = futures_timer::Delay::new(timeout);
 
         Ok(Self {
             target_sender,
